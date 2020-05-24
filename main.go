@@ -6,12 +6,18 @@ import (
 	"net/http"
 	// "io/ioutil"
 	"os"
+	"regexp"
+	"bufio"
+	"strings"
 )
+
+// regex 
+var r_css = regexp.MustCompile(`href="([^"]*\.css)"`)
 
 func main() {
 	fmt.Println("Pusheens!")
-	url := "http://leedanilek.com/"
-	fn := "output/totosla.html"
+	url := "https://ocw.mit.edu/courses/find-by-topic/#cat=engineering&subcat=computerscience"
+	fn := "output/ocw.html"
 	downURLtoFile(url, fn)
 }
 
@@ -36,17 +42,37 @@ func downURLtoFile (url string, fn string) {
 	p_reader, p_writer := io.Pipe()
 	defer p_reader.Close()
 
+	// channel of lines 
+	line_chan := make(chan string, 20)
+
 	go func() {
 		defer p_writer.Close() // so that the reader will get closed 
-
+		defer close(line_chan) // so that the thread that processes the lines can finish 
 		readcloser := downloadURL (url)
 		defer readcloser.Close()
-		bytes, err := io.Copy(p_writer, readcloser)
-		if err != nil {
-			panic (err)
+		// line reader 
+		linereader := bufio.NewReader(readcloser)
+
+		for {
+			line, err := linereader.ReadString('\n')
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				panic(err)
+			}
+
+			line_chan <- line
+
+			_, err = io.Copy(p_writer, strings.NewReader(line))
+			if err != nil {
+				panic (err)
+			}
+			// fmt.Printf("%d bytes processed and written into pipe\n", bytes)
 		}
-		fmt.Printf("%d bytes written to pipe\n", bytes)
 	}()
+
+	// process the lines as they are pushed to the channel 
+	go processLine(line_chan)
 	
 	writecloser := writeToFile (fn)
 	defer writecloser.Close()
@@ -57,5 +83,20 @@ func downURLtoFile (url string, fn string) {
 		panic(err)
 	}
 	fmt.Printf("%d bytes written to file %s\n", bytes, fn)
+}
+
+func processLine (lines chan string) {
+	for line := range lines {
+		lineProcessor(line)
+	}
+}
+
+func lineProcessor (line string) {
+	var strList []string 
+	strList = r_css.FindStringSubmatch(line)
+	if len(strList) == 2 {
+		cssFilename := strList[1]
+		fmt.Printf("used CSS file %s\n", cssFilename)
+	}
 }
 
