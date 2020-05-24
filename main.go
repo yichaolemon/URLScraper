@@ -9,15 +9,17 @@ import (
 	"regexp"
 	"bufio"
 	"strings"
+	"net/url"
+	"sync"
 )
 
 // regex 
-var r_css = regexp.MustCompile(`href="([^"]*\.css)"`)
+var r_css = regexp.MustCompile(`href="([^"]*\.css[^"]*)"`)
 
 func main() {
 	fmt.Println("Pusheens!")
-	url := "https://ocw.mit.edu/courses/find-by-topic/#cat=engineering&subcat=computerscience"
-	fn := "output/ocw.html"
+	url := "http://www.leedanilek.com"
+	fn := "output/totola.html"
 	downURLtoFile(url, fn)
 }
 
@@ -71,8 +73,15 @@ func downURLtoFile (url string, fn string) {
 		}
 	}()
 
+	done := make(chan struct{})
 	// process the lines as they are pushed to the channel 
-	go processLine(line_chan)
+	go func() {
+		defer close(done)
+		processLine(url, line_chan)
+	}()
+	defer func() {
+		<-done // return only after either channel is closed or something is put into the channel
+	}()
 	
 	writecloser := writeToFile (fn)
 	defer writecloser.Close()
@@ -85,18 +94,40 @@ func downURLtoFile (url string, fn string) {
 	fmt.Printf("%d bytes written to file %s\n", bytes, fn)
 }
 
-func processLine (lines chan string) {
-	for line := range lines {
-		lineProcessor(line)
+func processLine (urlName string, lines chan string) {
+	parsed_url, err := url.Parse(urlName)
+	if err != nil {
+		panic(err)
 	}
+	var wg sync.WaitGroup
+	for line := range lines {
+		lineProcessor(&wg, parsed_url, line)
+	}
+	wg.Wait()
 }
 
-func lineProcessor (line string) {
+func lineProcessor (wg *sync.WaitGroup, parsed_url *url.URL, line string) {
 	var strList []string 
 	strList = r_css.FindStringSubmatch(line)
+
 	if len(strList) == 2 {
 		cssFilename := strList[1]
 		fmt.Printf("used CSS file %s\n", cssFilename)
+		cssPath, err := parsed_url.Parse(cssFilename)
+		if err != nil {
+			panic (err)
+		}
+		// download css_path
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			downURLtoFile(cssPath.String(), "output/style.css")
+		}()
+		fmt.Printf("needs to download CSS file %s\n", cssPath)
 	}
 }
+
+
+
+
 
