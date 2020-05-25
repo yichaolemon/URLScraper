@@ -1,0 +1,3 @@
+#!/bin/bash
+
+make && docker run --rm -v $(pwd):/usr/src/URLScraper -w /usr/src/URLScraper golang:1.13-alpine ./URLScraper $@

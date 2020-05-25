@@ -11,16 +11,26 @@ import (
 	"strings"
 	"net/url"
 	"sync"
+	"path/filepath"
+	"flag"
 )
 
 // regex 
-var r_css = regexp.MustCompile(`href="([^"]*\.css[^"]*)"`)
+var r_links = regexp.MustCompile(`\bhref="([^"]*)"`)
+var r_js = regexp.MustCompile(`\bsrc="([^"]*)"`)
+var r_mailto = regexp.MustCompile(`\bhref="(mailto:[^"]*)"`)
+
+var outputFilePaths = map[string]struct{}{}
+var outputFilePathsMux sync.Mutex
+
+var output_dir = "totoout"
 
 func main() {
-	fmt.Println("Pusheens!")
-	url := "http://www.leedanilek.com"
-	fn := "output/totola.html"
-	downURLtoFile(url, fn)
+	url_name := flag.String("url", "https://yichaolemon.github.io/", "url to start the scraping")
+	filename := flag.String("filename", "self.html", "filename for the intitial page download")
+	flag.Parse()
+	fn := filepath.Join(output_dir, *filename)
+	downURLtoFile(*url_name, fn)
 }
 
 // download a single URL 
@@ -41,11 +51,21 @@ func writeToFile (fn string) io.WriteCloser {
 }
 
 func downURLtoFile (url string, fn string) {
+	// if it is already being downloaded
+	outputFilePathsMux.Lock()
+	if _, exists := outputFilePaths[fn]; exists {
+		outputFilePathsMux.Unlock()
+		return
+	}
+	outputFilePaths[fn] = struct{}{}
+	outputFilePathsMux.Unlock()
+
+
 	p_reader, p_writer := io.Pipe()
 	defer p_reader.Close()
 
 	// channel of lines 
-	line_chan := make(chan string, 20)
+	line_chan := make(chan string, 1)
 
 	go func() {
 		defer p_writer.Close() // so that the reader will get closed 
@@ -55,10 +75,11 @@ func downURLtoFile (url string, fn string) {
 		// line reader 
 		linereader := bufio.NewReader(readcloser)
 
-		for {
+		done := false
+		for !done {
 			line, err := linereader.ReadString('\n')
 			if err == io.EOF {
-				break
+				done = true
 			} else if err != nil {
 				panic(err)
 			}
@@ -106,24 +127,40 @@ func processLine (urlName string, lines chan string) {
 	wg.Wait()
 }
 
-func lineProcessor (wg *sync.WaitGroup, parsed_url *url.URL, line string) {
-	var strList []string 
-	strList = r_css.FindStringSubmatch(line)
-
-	if len(strList) == 2 {
-		cssFilename := strList[1]
-		fmt.Printf("used CSS file %s\n", cssFilename)
-		cssPath, err := parsed_url.Parse(cssFilename)
+func downloadLink(wg *sync.WaitGroup, parsed_url *url.URL, link string) {
+	wg.Add(1)
+	go func (){
+		defer wg.Done()
+		fmt.Printf("linked to file %s\n", link)
+		css_url, err := parsed_url.Parse(link)
 		if err != nil {
 			panic (err)
 		}
-		// download css_path
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			downURLtoFile(cssPath.String(), "output/style.css")
-		}()
-		fmt.Printf("needs to download CSS file %s\n", cssPath)
+		// want to know whether link is absolute 
+		parsed_css_url, err := url.Parse(link)
+		if len(parsed_css_url.Host) == 0 {
+			// relative path
+			css_path := filepath.Join(output_dir, css_url.Path)
+			err := os.MkdirAll(filepath.Dir(css_path), 0777)
+			if err != nil {
+				panic(err)
+			}
+			downURLtoFile(css_url.String(), css_path)
+			fmt.Printf("downloading file %s\n", css_path)
+		}
+	}()
+}
+
+func lineProcessor (wg *sync.WaitGroup, parsed_url *url.URL, line string) {
+	var strList []string 
+	strList = r_links.FindStringSubmatch(line)
+	jsList := r_js.FindStringSubmatch(line)
+	mailList := r_mailto.FindStringSubmatch(line)
+	if len(strList) == 2 && len(mailList) != 2 {
+		downloadLink(wg, parsed_url, strList[1])
+	}
+	if len(jsList) == 2 {
+		downloadLink(wg, parsed_url, jsList[1])
 	}
 }
 
