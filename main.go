@@ -17,14 +17,16 @@ import (
 )
 
 // regex 
-var r_links = regexp.MustCompile(`\bhref="([^"]*)"`)
-var r_js = regexp.MustCompile(`\bsrc="([^"]*)"`)
-var r_mailto = regexp.MustCompile(`\bhref="(mailto:[^"]*)"`)
+var r_links = regexp.MustCompile(`\b(?i)href="([^"]*)"`)
+var r_js = regexp.MustCompile(`\b(?i)src="([^"]*)"`)
+var r_mailto = regexp.MustCompile(`\b(?i)href="(mailto:[^"]*)"`)
 
 var outputFilePaths = map[string]struct{}{}
 var outputFilePathsMux sync.Mutex
 
-var output_dir = "out"
+var output_dir = "SeniorProjects"
+
+var dir_lock sync.Mutex
 
 func main() {
 	url_name := flag.String("url", "https://yichaolemon.github.io/", "url to start the scraping")
@@ -38,12 +40,20 @@ func main() {
 func downloadURL (url string) io.ReadCloser {
 	resp, err := http.Get(url)
 	if err != nil {
-		logErr(err)
+		// logErr(err)
+		return nil
 	}
 	return resp.Body
 }
 
-func writeToFile (fn string) io.WriteCloser {
+func createFileWriter (fn string) io.WriteCloser {
+	dir_lock.Lock()
+	defer dir_lock.Unlock()
+
+	fileinfo, err := os.Stat(fn)
+	if err == nil && fileinfo.IsDir() {
+		fn = filepath.Join(fn, "index.html")
+	}
 	file, err := os.OpenFile(fn, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0660)
 	if err != nil {
 		logErr(err)
@@ -67,9 +77,13 @@ func downURLtoFile (url string, fn string) {
 	defer p_reader.Close()
 
 	// channel of lines 
-	line_chan := make(chan string, 1)
+	line_chan := make(chan string, 100)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	defer wg.Wait()
 
 	go func() {
+		defer wg.Done()
 		defer p_writer.Close() // so that the reader will get closed 
 		defer close(line_chan) // so that the thread that processes the lines can finish 
 		readcloser := downloadURL (url)
@@ -101,17 +115,13 @@ func downURLtoFile (url string, fn string) {
 		}
 	}()
 
-	done := make(chan struct{})
 	// process the lines as they are pushed to the channel 
 	go func() {
-		defer close(done)
+		defer wg.Done()
 		processLine(url, line_chan)
 	}()
-	defer func() {
-		<-done // return only after either channel is closed or something is put into the channel
-	}()
 	
-	writecloser := writeToFile (fn)
+	writecloser := createFileWriter (fn)
 	if writecloser == nil {
 		return
 	}
@@ -130,12 +140,44 @@ func processLine (urlName string, lines chan string) {
 	parsed_url, err := url.Parse(urlName)
 	if err != nil {
 		logErr(err)
+		return
 	}
 	var wg sync.WaitGroup
 	for line := range lines {
 		lineProcessor(&wg, parsed_url, line)
 	}
 	wg.Wait()
+}
+
+
+// creates a directory, does a swap if already exists as a file 
+func createDir(dir_path string) error {
+	dir_lock.Lock()
+	defer dir_lock.Unlock()
+
+	fileinfo, err := os.Stat(dir_path)
+
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err == nil && fileinfo.Mode().IsRegular() {
+		fmt.Printf("switch files %s\n", dir_path)
+		err = os.Rename(dir_path, dir_path+"(conflict)")
+		if err != nil {
+			return err
+		}
+		err = os.MkdirAll(dir_path, 0777)
+		if err != nil {
+			return err 
+		}
+		err = os.Rename(dir_path+"(conflict)", filepath.Join(dir_path, "index.html"))
+	} else {
+		err = os.MkdirAll(dir_path, 0777)
+		if err != nil {
+			return err 
+		}
+	}
+	return nil 
 }
 
 func downloadLink(wg *sync.WaitGroup, parsed_url *url.URL, link string) {
@@ -145,15 +187,19 @@ func downloadLink(wg *sync.WaitGroup, parsed_url *url.URL, link string) {
 		//fmt.Printf("linked to file %s\n", link)
 		css_url, err := parsed_url.Parse(link)
 		if err != nil {
-			logErr (err)
+			//logErr (err)
 			return
 		}
-		// want to know whether link is absolute 
+
+		// only download relative paths (i.e., files within the same domain)
 		parsed_css_url, err := url.Parse(link)
 		if len(parsed_css_url.Host) == 0 {
 			// relative path
 			css_path := filepath.Join(output_dir, css_url.Path)
-			err := os.MkdirAll(filepath.Dir(css_path), 0777)
+			// need to know where there is already a file there
+			dir_path := filepath.Dir(css_path)
+
+			err := createDir(dir_path)
 			if err != nil {
 				logErr(err)
 				return
