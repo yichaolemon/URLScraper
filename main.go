@@ -27,32 +27,49 @@ var outputFilePathsMux sync.Mutex
 var output_dir = "2020Projects"
 
 var dir_lock sync.Mutex
+var https_pool_size = 10 
 
 func main() {
 	url_name := flag.String("url", "https://yichaolemon.github.io/", "url to start the scraping")
 	filename := flag.String("filename", "self.html", "filename for the intitial page download")
 	flag.Parse()
 	fn := filepath.Join(output_dir, *filename)
-	downURLtoFile(*url_name, fn)
+	retryDownURLtoFile(*url_name, fn)
 }
+
+// set of http clients so that don't create too many
+func initHttpPool () chan *http.Client {
+  var http_thread_pool = make (chan *http.Client, https_pool_size)
+  for i:=0; i<https_pool_size; i++ {
+    http_thread_pool <- &http.Client{}
+  }
+  return http_thread_pool
+}
+
+var http_thread_pool = initHttpPool()
 
 // download a single URL 
 func downloadURL (url string) (io.ReadCloser, string) {
-	finalURL := url
-	// TODO: somehow reuse this client so it can reuse connections.
-	//  It's hard to reuse in a way that lets us extract the final url.
-  // TODO: make a pool of http clients that also return redirect urls
-	httpClient := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+  httpClient := <- http_thread_pool
+  defer func(){ http_thread_pool <- httpClient }()
+  finalURL := url
+	
+  httpClient.CheckRedirect = 
+		func(req *http.Request, via []*http.Request) error {
 			finalURL = req.URL.String()
 			return nil
-		},
-	}
+		}
+
 	resp, err := httpClient.Get(url)
 	if err != nil {
 		// logErr(err)
 		return nil, ""
 	}
+  // if CheckRedirect is ever called after httpClient.Get returns,
+  // then we have an issue because we don't get the correct finalURL.
+  httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+    panic("AAAAAHHHHH")
+  }
 	return resp.Body, finalURL
 }
 
@@ -85,7 +102,9 @@ func retryDownURLtoFile (url string, fn string) {
   for i := 0; i < 10; i++ {
     err = downURLtoFile(url, fn)
     if err == nil { return }
+    fmt.Printf("RETRY downloading file [%s]\n", fn)
   }
+  fmt.Printf("GAVE UP downloading file [%s]\n", fn)
   logErr(err)
 }
 
@@ -259,7 +278,7 @@ func downloadLink(wg *sync.WaitGroup, parsed_url *url.URL, link string) {
 				logErr(err)
 				return
 			}
-			downURLtoFile(css_url.String(), css_path)
+			retryDownURLtoFile(css_url.String(), css_path)
 		}
 	}()
 }
