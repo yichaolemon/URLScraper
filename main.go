@@ -41,6 +41,7 @@ func downloadURL (url string) (io.ReadCloser, string) {
 	finalURL := url
 	// TODO: somehow reuse this client so it can reuse connections.
 	//  It's hard to reuse in a way that lets us extract the final url.
+  // TODO: make a pool of http clients that also return redirect urls
 	httpClient := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			finalURL = req.URL.String()
@@ -55,7 +56,7 @@ func downloadURL (url string) (io.ReadCloser, string) {
 	return resp.Body, finalURL
 }
 
-func createFileWriter (fn string) io.WriteCloser {
+func createFileWriter (fn string) (io.WriteCloser, error) {
 	dir_lock.Lock()
 	defer dir_lock.Unlock()
 
@@ -65,13 +66,13 @@ func createFileWriter (fn string) io.WriteCloser {
 	}
 	file, err := os.OpenFile(fn, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0660)
 	if err != nil {
-		logErr(err)
+    return nil, err
 	}
-	return file
+	return file, nil
 }
 
-func downURLtoFile (url string, fn string) {
-	// if it is already being downloaded
+func retryDownURLtoFile (url string, fn string) {
+	// if it is already being downloaded, skip
 	outputFilePathsMux.Lock()
 	if _, exists := outputFilePaths[fn]; exists {
 		outputFilePathsMux.Unlock()
@@ -79,8 +80,17 @@ func downURLtoFile (url string, fn string) {
 	}
 	outputFilePaths[fn] = struct{}{}
 	outputFilePathsMux.Unlock()
-	fmt.Printf("downloading file\t\t %s\n", fn)
 
+  var err error 
+  for i := 0; i < 10; i++ {
+    err = downURLtoFile(url, fn)
+    if err == nil { return }
+  }
+  logErr(err)
+}
+
+func downURLtoFile (url string, fn string) error {
+	fmt.Printf("downloading file\t\t %s\n", fn)
 
 	p_reader, p_writer := io.Pipe()
 	defer p_reader.Close()
@@ -97,7 +107,7 @@ func downURLtoFile (url string, fn string) {
 	finalURL := &url
 
 	go func() {
-		defer wg.Done()
+		defer wg.Done() // so that this go routine exits 
 		defer p_writer.Close() // so that the reader will get closed 
 		defer close(line_chan) // so that the thread that processes the lines can finish 
 		readcloser, newURL := downloadURL(url)
@@ -115,7 +125,7 @@ func downURLtoFile (url string, fn string) {
 			if err == io.EOF {
 				done = true
 			} else if err != nil {
-				logErr(err)
+				p_writer.CloseWithError(err)
 				return
 			}
 
@@ -132,23 +142,24 @@ func downURLtoFile (url string, fn string) {
 
 	// process the lines as they are pushed to the channel 
 	go func() {
-		defer wg.Done()
+		defer wg.Done() // so that this go routine exits 
 		processLine(finalURL, line_chan)
 	}()
 	
-	writecloser := createFileWriter (fn)
-	if writecloser == nil {
-		return
+	writecloser, err := createFileWriter (fn)
+	if err != nil {
+		return err
 	}
 	defer writecloser.Close()
 
-	_, err := io.Copy(writecloser, p_reader)
+  // errors from the p_writer.CloseWithError pop out here
+	_, err = io.Copy(writecloser, p_reader)
 
 	if err != nil {
-		logErr(err)
-		return
+		return err
 	}
 	fmt.Printf("downloaded file\t\t %s\n", fn)
+  return nil
 }
 
 func processLine (finalURL *string, lines chan string) {
