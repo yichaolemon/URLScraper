@@ -2,17 +2,22 @@
 Parallel downloading of webpages within the same domain using Go. 
 
 ## Requirement
-Docker for running the code, and python for simple https server. 
+Docker for running the code, and python for simple https server. Good internet connection.  
 
 ## Sample Usage
-Here is how you can use the code to download **all** the Yale CS senior projects from https://zoo.cs.yale.edu/classes/cs490/.
+**Important**: you should download each term separately, for there is simply too much congestion and it will probably crash your
+computer before you know it. I might revamp the logic so that it may mitigate these issues, but until then, below is the suggested usage. 
+
+
+Here is how you can use the code to download Spring 2020 Yale CS senior projects from https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html.
 ```
-$ ./run -url "https://zoo.cs.yale.edu/classes/cs490/" -filename "index.html"
+$ ./run -url "https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html" -filename "index.html"
 ```
-This will take a while, for there are some obscenely big code zipfiles. \\
+This will take a while, for there are some obscenely big code zipfiles.
 If you only want a specific term's project, feel free to modify the `-url` to accomplish that. 
+Do this in the `output_dir` root folder. 
 ```
 $ python -m SimpleHTTPServer 
 ```
-and then go to `http://localhost:8000/classes/cs490/` on your browser to browse all these files. 
+and then go to `http://localhost:8000/classes/cs490/19-20b/` on your browser to browse all these files. 
 
