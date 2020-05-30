@@ -1,5 +1,11 @@
 # URLScraper
-Parallel downloading of webpages within the same domain using Go. 
+Parallel downloading of webpages within the same domain using Go.
+
+## Features
+Is fast because of concurrency, but is not very fast because of much needed synchronization for dealing with various
+annoying "edge" cases of html. Handles redirects and does a decent job at error logging. Not robust for general purpose use, 
+but perhaps decent for recreational and non-mallicious use. You might have to tweak a few things here and there, but should not 
+be too bad either. 
 
 ## Requirement
 Docker for running the code, and python for simple https server. Good internet connection.  
@@ -26,3 +32,4 @@ and then go to `http://localhost:8000/classes/cs490/19-20b/` on your browser to 
 ## Terminal Output
 `downloaded file ...` and `downloading file ...`, besides a couple other occasional debug messages that aren't very important. 
 Eventually, the number of downloaded files should be equal to the number of downloading files. 
+
