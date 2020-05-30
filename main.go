@@ -24,7 +24,7 @@ var r_mailto = regexp.MustCompile(`\b(?i)href="(mailto:[^"]*)"`)
 var outputFilePaths = map[string]struct{}{}
 var outputFilePathsMux sync.Mutex
 
-var output_dir = "SeniorProjects"
+var output_dir = "2020Projects"
 
 var dir_lock sync.Mutex
 
@@ -37,13 +37,22 @@ func main() {
 }
 
 // download a single URL 
-func downloadURL (url string) io.ReadCloser {
-	resp, err := http.Get(url)
+func downloadURL (url string) (io.ReadCloser, string) {
+	finalURL := url
+	// TODO: somehow reuse this client so it can reuse connections.
+	//  It's hard to reuse in a way that lets us extract the final url.
+	httpClient := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			finalURL = req.URL.String()
+			return nil
+		},
+	}
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		// logErr(err)
-		return nil
+		return nil, ""
 	}
-	return resp.Body
+	return resp.Body, finalURL
 }
 
 func createFileWriter (fn string) io.WriteCloser {
@@ -82,15 +91,21 @@ func downURLtoFile (url string, fn string) {
 	wg.Add(2)
 	defer wg.Wait()
 
+	// pointer used across goroutines, does not need to be
+	// protected because as one channel writes it before starting
+	// output to line_chan, and the other only reads it after reading from line_chan.
+	finalURL := &url
+
 	go func() {
 		defer wg.Done()
 		defer p_writer.Close() // so that the reader will get closed 
 		defer close(line_chan) // so that the thread that processes the lines can finish 
-		readcloser := downloadURL (url)
+		readcloser, newURL := downloadURL(url)
 		if readcloser == nil {
 			return
 		}
 		defer readcloser.Close()
+		*finalURL = newURL
 		// line reader 
 		linereader := bufio.NewReader(readcloser)
 
@@ -118,7 +133,7 @@ func downURLtoFile (url string, fn string) {
 	// process the lines as they are pushed to the channel 
 	go func() {
 		defer wg.Done()
-		processLine(url, line_chan)
+		processLine(finalURL, line_chan)
 	}()
 	
 	writecloser := createFileWriter (fn)
@@ -136,42 +151,71 @@ func downURLtoFile (url string, fn string) {
 	fmt.Printf("downloaded file\t\t %s\n", fn)
 }
 
-func processLine (urlName string, lines chan string) {
-	parsed_url, err := url.Parse(urlName)
-	if err != nil {
-		logErr(err)
-		return
-	}
+func processLine (finalURL *string, lines chan string) {
 	var wg sync.WaitGroup
 	for line := range lines {
+		parsed_url, err := url.Parse(*finalURL)
+		if err != nil {
+			logErr(err)
+			return
+		}
 		lineProcessor(&wg, parsed_url, line)
 	}
 	wg.Wait()
 }
 
+func convertFileToDirectory(dir_path string) error {
+  fmt.Printf("switch files %s\n", dir_path)
+  err := os.Rename(dir_path, dir_path+"(conflict)")
+  if err != nil {
+    return err
+  }
+  err = os.MkdirAll(dir_path, 0777)
+  if err != nil {
+    return err 
+  }
+  err = os.Rename(dir_path+"(conflict)", filepath.Join(dir_path, "index.html"))
+  if err != nil {
+    return err
+  }
+  return nil
+}
 
 // creates a directory, does a swap if already exists as a file 
 func createDir(dir_path string) error {
 	dir_lock.Lock()
 	defer dir_lock.Unlock()
+  return createDirRecursive(dir_path)
+}
 
+func createDirRecursive(dir_path string) error {
 	fileinfo, err := os.Stat(dir_path)
 
-	if err != nil && !os.IsNotExist(err) {
-		return err
+	// ignore errors about the path not existing, including errors about parent components
+	// of the path not existing.
+  // There are two types of "errors" which we can handle, i.e. they are not really errors.
+  // 1. nothing exists at that path. (that's fine because we're trying to create something there)
+  // 2. a parent path does not exist or is a file.
+	if err != nil {
+    pathIsAvailable := os.IsNotExist(err)
+    parentPathIsInvalid := strings.Contains(err.Error(), "not a directory")
+    if pathIsAvailable {
+      // okay, continue
+    } else if parentPathIsInvalid {
+      err = createDirRecursive(filepath.Dir(dir_path))
+      if err != nil {
+        return err
+      }
+    } else {
+      return err
+    }
 	}
-	if err == nil && fileinfo.Mode().IsRegular() {
-		fmt.Printf("switch files %s\n", dir_path)
-		err = os.Rename(dir_path, dir_path+"(conflict)")
-		if err != nil {
-			return err
-		}
-		err = os.MkdirAll(dir_path, 0777)
-		if err != nil {
-			return err 
-		}
-		err = os.Rename(dir_path+"(conflict)", filepath.Join(dir_path, "index.html"))
+
+	if fileinfo != nil && fileinfo.Mode().IsRegular() {
+    convertFileToDirectory(dir_path)
 	} else {
+    // the path is available.
+    // there's either nothing there or there's already a directory there.
 		err = os.MkdirAll(dir_path, 0777)
 		if err != nil {
 			return err 
