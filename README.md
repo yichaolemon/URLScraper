@@ -11,7 +11,7 @@ computer before you know it. I might revamp the logic so that it may mitigate th
 
 Here is how you can use the code to download Spring 2020 Yale CS senior projects from https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html.
 ```
-$ mkdir Spring2020
+$ mkdir Spring2020 # output_dir 
 $ ./run -url "https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html" -filename "index.html"
 ```
 This will take a while, for there are some obscenely big code zipfiles.
@@ -23,3 +23,6 @@ $ python -m SimpleHTTPServer
 ```
 and then go to `http://localhost:8000/classes/cs490/19-20b/` on your browser to browse all these files. 
 
+## Terminal Output
+`downloaded file ...` and `downloading file ...`, besides a couple other occasional debug messages that aren't very important. 
+Eventually, the number of downloaded files should be equal to the number of downloading files. 
