@@ -18,7 +18,7 @@ computer before you know it. I might revamp the logic so that it may mitigate th
 Here is how you can use the code to download Spring 2020 Yale CS senior projects from https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html.
 ```
 $ mkdir Spring2020 # output_dir 
-$ ./run -url "https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html" -filename "index.html"
+$ ./run -url "https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html" -dir "Spring2020"
 ```
 This will take a while, for there are some obscenely big code zipfiles.
 If you only want a specific term's project, feel free to modify the `-url` to accomplish that. 

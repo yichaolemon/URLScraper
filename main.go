@@ -24,16 +24,19 @@ var r_mailto = regexp.MustCompile(`\b(?i)href="(mailto:[^"]*)"`)
 var outputFilePaths = map[string]struct{}{}
 var outputFilePathsMux sync.Mutex
 
-var output_dir = "SeniorProjects"
 
 var dir_lock sync.Mutex
 var https_pool_size = 10 // DON'T INCREASE THIS TOO MUCH IT CAN CRASH YOUR COMPUTER  
 
+var output_dir *string
+
 func main() {
 	url_name := flag.String("url", "https://yichaolemon.github.io/", "url to start the scraping")
-	filename := flag.String("filename", "self.html", "filename for the intitial page download")
+	// filename := flag.String("filename", "self.html", "filename for the intitial page download")
+  output_dir = flag.String("dir", "output_dir", "output directory")
+
 	flag.Parse()
-	fn := filepath.Join(output_dir, *filename)
+	fn := filepath.Join(*output_dir, "index.html")
 	retryDownURLtoFile(*url_name, fn)
 }
 
@@ -269,7 +272,7 @@ func downloadLink(wg *sync.WaitGroup, parsed_url *url.URL, link string) {
 		parsed_css_url, err := url.Parse(link)
 		if len(parsed_css_url.Host) == 0 {
 			// relative path
-			css_path := filepath.Join(output_dir, css_url.Path)
+			css_path := filepath.Join(*output_dir, css_url.Path)
 			// need to know where there is already a file there
 			dir_path := filepath.Dir(css_path)
 
