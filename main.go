@@ -24,10 +24,10 @@ var r_mailto = regexp.MustCompile(`\b(?i)href="(mailto:[^"]*)"`)
 var outputFilePaths = map[string]struct{}{}
 var outputFilePathsMux sync.Mutex
 
-var output_dir = "2020Projects"
+var output_dir = "SeniorProjects"
 
 var dir_lock sync.Mutex
-var https_pool_size = 10 
+var https_pool_size = 10 // DON'T INCREASE THIS TOO MUCH IT CAN CRASH YOUR COMPUTER  
 
 func main() {
 	url_name := flag.String("url", "https://yichaolemon.github.io/", "url to start the scraping")
