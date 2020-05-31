@@ -3,9 +3,10 @@ Parallel downloading of webpages within the same domain using Go.
 
 ## Features
 Is fast because of concurrency, but is not very fast because of much needed synchronization for dealing with various
-annoying "edge" cases of html. Handles redirects and does a decent job at error logging. Not robust for general purpose use, 
-but perhaps decent for recreational and non-mallicious use. You might have to tweak a few things here and there, but should not 
-be too bad either. 
+annoying "edge" cases of html. Handles redirects and does a decent job at error logging. 
+
+## Warning
+To use this to download resources from an arbitrary domain, you might need to tweak things here and there, but it should not be too bad. Additionally, if something takes a long while to download (program seemingly got stuck), it could be that that thing is super big (like some insanely large .h5 models and datasets), or some other issues (perhaps the webpage not responding or super slow etc.). In that case, just Ctrl-C. 
 
 ## Requirement
 Docker for running the code, and python for simple https server. Good internet connection.  
@@ -15,7 +16,7 @@ Docker for running the code, and python for simple https server. Good internet c
 computer before you know it. I might revamp the logic so that it may mitigate these issues, but until then, below is the suggested usage. 
 
 
-Here is how you can use the code to download Spring 2020 Yale CS senior projects from https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html.
+Here is how you can use the code to download Spring 2020 Yale CS senior projects from https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html. You need to be on Yale network (on-campus/vpn) for this to work. 
 ```
 $ mkdir Spring2020 # output_dir 
 $ ./run -url "https://zoo.cs.yale.edu/classes/cs490/19-20b/index.html" -dir "Spring2020"

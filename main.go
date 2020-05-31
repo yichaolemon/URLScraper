@@ -267,6 +267,10 @@ func downloadLink(wg *sync.WaitGroup, parsed_url *url.URL, link string) {
 			//logErr (err)
 			return
 		}
+		// ignore things like mailto: links that result in no Path
+		if len(css_url.Path) == 0 {
+			return
+		}
 
 		// only download relative paths (i.e., files within the same domain)
 		parsed_css_url, err := url.Parse(link)
@@ -287,15 +291,19 @@ func downloadLink(wg *sync.WaitGroup, parsed_url *url.URL, link string) {
 }
 
 func lineProcessor (wg *sync.WaitGroup, parsed_url *url.URL, line string) {
-	var strList []string 
-	strList = r_links.FindStringSubmatch(line)
-	jsList := r_js.FindStringSubmatch(line)
-	mailList := r_mailto.FindStringSubmatch(line)
-	if len(strList) == 2 && len(mailList) != 2 {
-		downloadLink(wg, parsed_url, strList[1])
-	}
-	if len(jsList) == 2 {
-		downloadLink(wg, parsed_url, jsList[1])
+
+	strListlist := r_links.FindAllStringSubmatch(line, -1)
+	jsListlist := r_js.FindAllStringSubmatch(line, -1)
+	// mailListlist := r_mailto.FindAllStringSubmatch(line)
+	for _, strList := range strListlist {
+		if len(strList) == 2 {
+			downloadLink(wg, parsed_url, strList[1])
+		}
+	} 
+	for _, jsList := range jsListlist {
+		if len(jsList) == 2 {
+			downloadLink(wg, parsed_url, jsList[1])
+		}
 	}
 }
 
