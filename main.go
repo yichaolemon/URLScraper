@@ -65,7 +65,8 @@ func downloadURL (url string) (io.ReadCloser, string) {
 
 	resp, err := httpClient.Get(url)
 	if err != nil {
-		// logErr(err)
+		logErr(err) // this often is due to certificate not signed by the right authority - machine config specific 
+								// not a Go program problem 
 		return nil, ""
 	}
   // if CheckRedirect is ever called after httpClient.Get returns,
@@ -143,6 +144,7 @@ func downURLtoFile (url string, fn string) error {
 
 		done := false
 		for !done {
+			fmt.Printf("Here\n")
 			line, err := linereader.ReadString('\n')
 			if err == io.EOF {
 				done = true
